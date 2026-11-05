@@ -29,6 +29,10 @@ h2.sec{margin:26px 0 8px;font-size:20px}
 .qn{font-weight:700;margin-bottom:4px}
 .q p{margin:4px 0}
 .q .pt{margin:3px 0 3px 12px}
+.tw{overflow-x:auto;margin:8px 0}
+.qt{border-collapse:collapse;font-size:14px;min-width:100%}
+.qt th,.qt td{border:1px solid var(--ln);padding:5px 8px;text-align:left;vertical-align:top}
+.qt th{background:var(--ans);font-weight:600}
 .btn{background:var(--on);color:var(--onbg);border:0;border-radius:12px;padding:10px 16px;font-weight:600;margin-top:12px}
 .btn:disabled{opacity:.5;cursor:wait}
 .ans{background:var(--ans);border-radius:14px;padding:12px 14px;margin-top:12px;overflow-wrap:anywhere}
@@ -120,6 +124,13 @@ const I={
 const TRL={hing:{n:'Hinglish',v:'hi-IN'},as:{n:'অসমীয়া',v:'as-IN'},bn:{n:'বাংলা',v:'bn-IN'}};
 
 let DATA=null,VIEW='home';
+// Chapters: DATA.chapters = [{no,title,sections}]. Older cached data had one chapter + sections; norm() converts it.
+const CHKEY='orbit_chapter_v1';
+let CHNO=1;
+try{CHNO=+localStorage.getItem(CHKEY)||1}catch(e){}
+const norm=d=>d&&d.chapters?d:(d&&d.sections?{subject:d.subject,class:d.class,chapters:[{no:d.chapter.no,title:d.chapter.title,sections:d.sections}]}:null);
+const curCh=()=>DATA.chapters.find(c=>c.no===CHNO)||DATA.chapters[0];
+const chOf=id=>DATA.chapters.find(c=>c.sections.some(s=>s.questions.some(q=>q.id===id)))||curCh();
 const ANS={};   // id -> {loading,text,err}
 const TR={};    // id|lang -> {loading,text,err}
 const VIS={};   // id -> {loading,svg,err}
@@ -187,7 +198,7 @@ const dateFmt=t=>new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'sh
 const fmt=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
 const plain=t=>String(t||'').replace(/\*\*/g,'');
 function shown(id){const u=ui(id);if(u.tr){const t=TR[id+'|'+u.tr];if(t&&t.text)return t.text}return(ANS[id]||{}).text||''}
-function ytLink(q){const s=`Class 10 Science ${DATA.chapter.title} ${q.video||q.text}`.slice(0,110);return 'https://www.youtube.com/results?search_query='+encodeURIComponent(s)}
+function ytLink(q){const s=`Class 10 Science ${chOf(q.id).title} ${q.video||q.text}`.slice(0,110);return 'https://www.youtube.com/results?search_query='+encodeURIComponent(s)}
 
 function toolbar(q){
  const id=q.id,u=ui(id),a=ANS[id]||{},tr=u.tr?TR[id+'|'+u.tr]:null,v=VIS[id]||{},sv=isSaved(id),mr=u.mk?MR[id+'|'+u.mk]:null;
@@ -215,9 +226,14 @@ function toolbar(q){
  ${u.vis&&v.err?`<div class="err" role="alert">${esc(v.err)}</div>`:''}
  ${u.msg?`<div class="mut" style="margin-top:8px" role="status">${esc(u.msg)}</div>`:''}`}
 
+function tblHTML(q){
+ const t=q.table;if(!t||!t.head)return '';
+ return `<div class="tw"><table class="qt"><thead><tr>${t.head.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${(t.rows||[]).map(r=>`<tr>${r.map(c=>`<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
 function qHTML(q){
  const a=ANS[q.id]||{},txt=shown(q.id),has=!!a.text,open=has&&!!OPEN[q.id];
- return `<div class="card q ${has?'can':''}" data-qid="${q.id}"><button class="ic pin ${isPinned(q.id)?'liked':''} ${has?'':'nochev'}" data-act="pin" data-id="${q.id}" aria-pressed="${isPinned(q.id)}" title="${isPinned(q.id)?'Pin hatao':'Pin karo'}" aria-label="${isPinned(q.id)?'Pin hatao':'Pin karo'}">${I.pin}</button><div class="qb" ${has?`role="button" tabindex="0" aria-expanded="${open}" aria-label="Q${q.no}. Answer ${open?'chhupao':'dikhao'}"`:''}><div class="qbody"><div class="qn">Q${q.no}.</div><p>${esc(q.text)}</p>
+ return `<div class="card q ${has?'can':''}" data-qid="${q.id}"><button class="ic pin ${isPinned(q.id)?'liked':''} ${has?'':'nochev'}" data-act="pin" data-id="${q.id}" aria-pressed="${isPinned(q.id)}" title="${isPinned(q.id)?'Pin hatao':'Pin karo'}" aria-label="${isPinned(q.id)?'Pin hatao':'Pin karo'}">${I.pin}</button><div class="qb" ${has?`role="button" tabindex="0" aria-expanded="${open}" aria-label="Q${q.no}. Answer ${open?'chhupao':'dikhao'}"`:''}><div class="qbody"><div class="qn">Q${q.no}.</div>${q.text?`<p>${esc(q.text)}</p>`:''}
+ ${tblHTML(q)}
  ${(q.parts||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
  ${(q.options||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}</div>${has?`<span class="chev ${open?'open':''}">${I.chev}</span>`:''}</div>
  ${has?(open?`<div class="ans">${fmt(txt)}</div>${isSaved(q.id)?`<div class="saved-note">Saved · ${dateFmt(SAVED[q.id].at)}</div>`:''}${toolbar(q)}`
@@ -225,8 +241,9 @@ function qHTML(q){
   :`<button class="btn" data-act="ask" data-id="${q.id}" ${a.loading?'disabled':''}>${a.loading?'Soch raha hoon…':'AI Answer'}</button>`}
  ${a.err?`<div class="err" role="alert">${esc(a.err)}</div>`:''}</div>`}
 
-function listHTML(fn,empty){
- const secs=DATA.sections.map(x=>({t:x.title,qs:x.questions.filter(fn)})).filter(x=>x.qs.length);
+function listHTML(fn,empty,chs){
+ const multi=chs.length>1;
+ const secs=chs.flatMap(c=>c.sections.map(x=>({t:(multi?`Ch ${c.no} · `:'')+x.title,qs:x.questions.filter(fn)}))).filter(x=>x.qs.length);
  return secs.length?secs.map(x=>`<h2 class="sec">${esc(x.t)}</h2>${x.qs.map(qHTML).join('')}`).join(''):`<p class="mut" style="margin-top:24px">${empty}</p>`;
 }
 function settingsHTML(){
@@ -244,11 +261,13 @@ function draw(){
  const d=DATA,y=window.scrollY;
  let body;
  if(VIEW==='home'||VIEW==='fav'||VIEW==='pins'){
-  const head=VIEW==='home'?`<h1 style="font-size:26px;margin-top:14px">Chapter ${d.chapter.no}: ${esc(d.chapter.title)}</h1>`
-   :`<h1 style="font-size:26px;margin-top:14px">${TITLES[VIEW]}</h1><div class="mut">Chapter ${d.chapter.no}: ${esc(d.chapter.title)}</div>`;
+  const ch=curCh(),multi=d.chapters.length>1;
+  const chips=multi&&VIEW==='home'?`<div class="chips" role="group" aria-label="Chapter chuno">${d.chapters.map(c=>`<button class="chip" data-act="chap" data-v="${c.no}" aria-pressed="${c.no===ch.no}">Chapter ${c.no}</button>`).join('')}</div>`:'';
+  const head=VIEW==='home'?`${chips}<h1 style="font-size:26px;margin-top:14px">Chapter ${ch.no}: ${esc(ch.title)}</h1>`
+   :`<h1 style="font-size:26px;margin-top:14px">${TITLES[VIEW]}</h1>${multi?'':`<div class="mut">Chapter ${ch.no}: ${esc(ch.title)}</div>`}`;
   const fn=VIEW==='fav'?q=>isSaved(q.id):VIEW==='pins'?q=>isPinned(q.id):()=>true;
   const empty=VIEW==='fav'?'Abhi koi answer save nahi hua. Kisi answer ke neeche heart dabao.':'Abhi koi question pin nahi hua. Question ke upar pin icon dabao.';
-  body=head+listHTML(fn,empty)+`<p class="mut" style="margin-top:28px">AI se kabhi galti ho sakti hai. Exam se pehle apni kitab se check kar lo.</p>`;
+  body=head+listHTML(fn,empty,VIEW==='home'?[ch]:d.chapters)+`<p class="mut" style="margin-top:28px">AI se kabhi galti ho sakti hai. Exam se pehle apni kitab se check kar lo.</p>`;
  }else if(VIEW==='settings')body=settingsHTML();
  else body=soonHTML();
  $('#app').innerHTML=`<div class="top"><button class="ic" data-act="menu" aria-label="Menu kholo" aria-expanded="false">${I.menu}</button><div class="logo">${LOGO}Orbit Tutorial</div></div>
@@ -378,6 +397,7 @@ document.addEventListener('click',e=>{
  else if(act==='pin')pin(id);
  else if(act==='more'){const u=ui(id);u.more=!u.more;draw()}
  else if(act==='mk')setMore(id,b.dataset.k);
+ else if(act==='chap'){CHNO=+b.dataset.v;try{localStorage.setItem(CHKEY,String(CHNO))}catch(e){}draw();window.scrollTo(0,0)}
  else if(act==='setd'){ST.dtype=b.dataset.v;stSave();draw()}
  else if(act==='sett'){ST.theme=b.dataset.v;applyTheme();stSave();draw()}
  else if(act==='ask')ask(id,false);
@@ -402,11 +422,11 @@ document.addEventListener('keydown',e=>{
 // Questions are cached too: the page opens at once (even offline or while Render wakes up), then refreshes quietly.
 const QKEY='orbit_questions_v1';
 let qOld=null;
-try{qOld=localStorage.getItem(QKEY);const c=JSON.parse(qOld||'null');if(c&&c.sections){DATA=c;draw()}}catch(e){qOld=null}
+try{qOld=localStorage.getItem(QKEY);const c=norm(JSON.parse(qOld||'null'));if(c){DATA=c;draw()}}catch(e){qOld=null}
 fetch('/api/questions').then(r=>{if(!r.ok)throw new Error('q');return r.json()}).then(d=>{
  const nw=JSON.stringify(d);
  try{localStorage.setItem(QKEY,nw)}catch(e){}
- if(!DATA||nw!==qOld){DATA=d;draw()}
+ if(!DATA||nw!==qOld){DATA=norm(d)||DATA;if(DATA)draw()}
 }).catch(()=>{if(!DATA)$('#app').innerHTML='<p class="err">Questions load nahi hue. Internet check karke page refresh karo.</p>'});
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(()=>{})});

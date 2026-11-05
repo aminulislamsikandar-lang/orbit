@@ -15,7 +15,8 @@ Questions are fixed in `questions.js`. The AI writes the answers on the spot (Ge
 - Environment → add `GEMINI_API_KEY`
 
 ## Add more questions
-Edit `questions.js` and add a block with a new unique `id`.
+Edit `questions.js`. Questions are grouped as `chapters` > `sections` > `questions`. To add a chapter, add one more object to `chapters` (unique `no`, and question ids that start with `c<no>-`). A chapter switcher (Chapter 1, Chapter 2, ...) shows on Home when there is more than one chapter. Favourite and Pinned show items from all chapters.
+A question can also have: `parts` (sub-questions), `options` (choices), `table: { head: [...], rows: [[...]] }` (a table shown under the question and sent to the AI), and a hidden `context` (for an Activity or figure the student does not see).
 
 ## Offline answers
 Every answer the AI generates is saved in the browser (`localStorage`, key `orbit_answers_v1`), so it opens later without internet.

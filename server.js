@@ -19,7 +19,7 @@ const MODELS = [...new Set([
 // id -> question. The client only ever sends an id (never free text),
 // so nobody can use this server as a free general-purpose AI with your key.
 const BY_ID = new Map();
-QUIZ.sections.forEach(s => s.questions.forEach(q => BY_ID.set(q.id, q)));
+QUIZ.chapters.forEach(c => c.sections.forEach(s => s.questions.forEach(q => BY_ID.set(q.id, q))));
 
 const SYSTEM = `You are a friendly Class 10 Science tutor for SEBA/NCERT students.
 Answer ONLY the given textbook question, at Class 10 level, in simple words.
@@ -80,6 +80,11 @@ const clientText = t => (typeof t === 'string' && t.length > 0 && t.length <= MA
 
 function buildPrompt(q) {
   const parts = [`Question ${q.no}: ${q.text}`];
+  if (q.table) {
+    parts.push('Table:');
+    parts.push(q.table.head.join(' | '));
+    (q.table.rows || []).forEach(r => parts.push(r.map(c => c || '(blank)').join(' | ')));
+  }
   (q.parts || []).forEach(p => parts.push(p));
   (q.options || []).forEach(o => parts.push(o));
   if (q.context) parts.push('\n(Textbook context, do not repeat it: ' + q.context + ')');
