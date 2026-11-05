@@ -16,3 +16,7 @@ Questions are fixed in `questions.js`. The AI writes the answers on the spot (Ge
 
 ## Add more questions
 Edit `questions.js` and add a block with a new unique `id`.
+
+## Offline answers
+Every answer the AI generates is saved in the browser (`localStorage`, key `orbit_answers_v1`), so it opens later without internet.
+Answers are hidden by default; tapping the question shows or hides them. The questions and the app page are cached too (`public/sw.js`).

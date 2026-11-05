@@ -32,6 +32,13 @@ h2.sec{margin:26px 0 8px;font-size:20px}
 .btn:disabled{opacity:.5;cursor:wait}
 .ans{background:var(--ans);border-radius:14px;padding:12px 14px;margin-top:12px;overflow-wrap:anywhere}
 .saved-note{font-size:13px;color:var(--mut);margin-top:6px}
+.q.can{cursor:pointer}
+.qb{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;border-radius:12px}
+.qbody{min-width:0;flex:1}
+.chev{flex:none;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;color:var(--mut);transition:transform .15s}
+.chev svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.chev.open{transform:rotate(180deg)}
+@media(prefers-reduced-motion:reduce){.chev{transition:none}}
 
 /* ChatGPT / Claude style: borderless grey line icons */
 .tb{display:flex;gap:2px;margin-top:6px;flex-wrap:wrap}
@@ -68,7 +75,8 @@ const I={
  say:ic('<path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>'),
  stop:ic('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
  cp:ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>'),
- ok:ic('<path d="M5 13l4 4L19 7"/>')
+ ok:ic('<path d="M5 13l4 4L19 7"/>'),
+ chev:ic('<path d="M6 9l6 6 6-6"/>')
 };
 // translation languages: key -> button label, speech voice
 const TRL={hing:{n:'Hinglish',v:'hi-IN'},as:{n:'অসমীয়া',v:'as-IN'},bn:{n:'বাংলা',v:'bn-IN'}};
@@ -86,6 +94,14 @@ let SAVED={};
 try{SAVED=JSON.parse(localStorage.getItem(SKEY)||'{}')||{}}catch(e){SAVED={}}
 function persist(){try{localStorage.setItem(SKEY,JSON.stringify(SAVED))}catch(e){}}
 for(const id in SAVED)ANS[id]={text:SAVED[id].text};
+// Every answer the AI generates is kept on this device, so it opens later even without internet.
+const CKEY='orbit_answers_v1';
+let CACHE={};
+try{CACHE=JSON.parse(localStorage.getItem(CKEY)||'{}')||{}}catch(e){CACHE={}}
+function cachePersist(){try{localStorage.setItem(CKEY,JSON.stringify(CACHE))}catch(e){}}
+for(const id in SAVED)if(!CACHE[id])CACHE[id]={text:SAVED[id].text,at:SAVED[id].at};
+for(const id in CACHE)if(CACHE[id]&&CACHE[id].text)ANS[id]={text:CACHE[id].text};
+const OPEN={};   // id -> answer is visible (hidden by default)
 const isSaved=id=>!!SAVED[id];
 const nSaved=()=>Object.keys(SAVED).length;
 const dateFmt=t=>new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
@@ -116,11 +132,12 @@ function toolbar(q){
  ${u.msg?`<div class="mut" style="margin-top:8px" role="status">${esc(u.msg)}</div>`:''}`}
 
 function qHTML(q){
- const a=ANS[q.id]||{},txt=shown(q.id);
- return `<div class="card q"><div class="qn">Q${q.no}.</div><p>${esc(q.text)}</p>
+ const a=ANS[q.id]||{},txt=shown(q.id),has=!!a.text,open=has&&!!OPEN[q.id];
+ return `<div class="card q ${has?'can':''}" data-qid="${q.id}"><div class="qb" ${has?`role="button" tabindex="0" aria-expanded="${open}" aria-label="Q${q.no}. Answer ${open?'chhupao':'dikhao'}"`:''}><div class="qbody"><div class="qn">Q${q.no}.</div><p>${esc(q.text)}</p>
  ${(q.parts||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
- ${(q.options||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
- ${a.text?`<div class="ans">${fmt(txt)}</div>${isSaved(q.id)?`<div class="saved-note">Saved · ${dateFmt(SAVED[q.id].at)}</div>`:''}${toolbar(q)}`
+ ${(q.options||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}</div>${has?`<span class="chev ${open?'open':''}">${I.chev}</span>`:''}</div>
+ ${has?(open?`<div class="ans">${fmt(txt)}</div>${isSaved(q.id)?`<div class="saved-note">Saved · ${dateFmt(SAVED[q.id].at)}</div>`:''}${toolbar(q)}`
+  :`<div class="saved-note">Answer device mein saved hai. Dekhne ke liye question par tap karo.</div>`)
   :`<button class="btn" data-act="ask" data-id="${q.id}" ${a.loading?'disabled':''}>${a.loading?'Soch raha hoon…':'AI Answer'}</button>`}
  ${a.err?`<div class="err" role="alert">${esc(a.err)}</div>`:''}</div>`}
 
@@ -144,16 +161,23 @@ async function api(path,body){
  const j=await r.json().catch(()=>({}));
  if(!r.ok)throw new Error(j.error||'Kuch gadbad hui. Dobara try karo.');
  return j}
-const errMsg=e=>(e.name==='TimeoutError'||e.name==='AbortError')?'Server ne jawab nahi diya. Thodi der baad dobara try karo.':e.message;
+const errMsg=e=>!navigator.onLine?'Internet nahi hai. Naya answer ke liye online aao. Purane answers offline dekh sakte ho.':(e.name==='TimeoutError'||e.name==='AbortError')?'Server ne jawab nahi diya. Thodi der baad dobara try karo.':(e.name==='TypeError')?'Server tak pahunch nahi paya. Internet check karke dobara try karo.':e.message;
 
 async function ask(id,fresh){
  const prev=ANS[id]&&ANS[id].text;
  ANS[id]={loading:true,text:fresh?prev:undefined};
  if(fresh){const u=ui(id);u.tr=null;u.menu=false;u.vis=false;u.msg='';delete VIS[id];for(const t in TR)if(t.startsWith(id+'|'))delete TR[t]}
  draw();
- try{const j=await api('/api/answer',{id,fresh:!!fresh});ANS[id]={text:j.answer}}
+ try{const j=await api('/api/answer',{id,fresh:!!fresh});ANS[id]={text:j.answer};CACHE[id]={text:j.answer,at:Date.now()};cachePersist();OPEN[id]=true}
  catch(e){ANS[id]={err:errMsg(e),text:prev}}
  draw();
+}
+function toggleOpen(id,kb){
+ if(!(ANS[id]&&ANS[id].text))return;
+ const u=ui(id);
+ if(OPEN[id]&&u.say){speechSynthesis.cancel();u.say=false}
+ OPEN[id]=!OPEN[id];draw();
+ if(kb){const el=document.querySelector('.q[data-qid="'+id+'"] .qb');if(el)el.focus()}
 }
 function like(id){
  const u=ui(id);u.msg='';
@@ -199,7 +223,11 @@ async function copy(id){
 
 document.addEventListener('click',e=>{
  const s=e.target.closest('[data-show]');if(s){SHOW=s.dataset.show;draw();return}
- const b=e.target.closest('[data-act]');if(!b||b.disabled)return;
+ const b=e.target.closest('[data-act]');
+ if(!b){const c=e.target.closest('.q[data-qid]');
+  if(c&&!e.target.closest('.ans,.tb,.chips,.vis,.btn,a,button')&&!String(window.getSelection()))toggleOpen(c.dataset.qid);
+  return}
+ if(b.disabled)return;
  const id=b.dataset.id,act=b.dataset.act;
  if(act==='ask')ask(id,false);
  else if(act==='re')ask(id,true);
@@ -211,8 +239,23 @@ document.addEventListener('click',e=>{
  else if(act==='cp')copy(id);
 });
 
-fetch('/api/questions').then(r=>r.json()).then(d=>{DATA=d;draw()})
- .catch(()=>{$('#app').innerHTML='<p class="err">Questions load nahi hue. Page refresh karo.</p>'});
+document.addEventListener('keydown',e=>{
+ if(e.key!=='Enter'&&e.key!==' ')return;
+ const b=e.target.closest&&e.target.closest('.qb[role=button]');if(!b)return;
+ e.preventDefault();toggleOpen(b.closest('.q').dataset.qid,true);
+});
+
+// Questions are cached too: the page opens at once (even offline or while Render wakes up), then refreshes quietly.
+const QKEY='orbit_questions_v1';
+let qOld=null;
+try{qOld=localStorage.getItem(QKEY);const c=JSON.parse(qOld||'null');if(c&&c.sections){DATA=c;draw()}}catch(e){qOld=null}
+fetch('/api/questions').then(r=>{if(!r.ok)throw new Error('q');return r.json()}).then(d=>{
+ const nw=JSON.stringify(d);
+ try{localStorage.setItem(QKEY,nw)}catch(e){}
+ if(!DATA||nw!==qOld){DATA=d;draw()}
+}).catch(()=>{if(!DATA)$('#app').innerHTML='<p class="err">Questions load nahi hue. Internet check karke page refresh karo.</p>'});
+
+if('serviceWorker' in navigator)window.addEventListener('load',()=>{navigator.serviceWorker.register('/sw.js').catch(()=>{})});
 </script>
 </body>
 </html>
