@@ -26,3 +26,7 @@ Translations are saved per answer (`orbit_tr_v1`) and are dropped when the answe
 Menu icon (top-left) opens the sidebar: Home, Favourite (hearted answers), Pinned (pin icon on each question), PYQ, Pass mark, Topper, Faculty, Developer, Settings, Log in.
 PYQ, Pass mark, Topper, Faculty, Developer and Log in show "Coming soon" for now.
 Settings: diagram type (Auto, Flow, Labelled, Comparison, Mind map, Chart, Table) and theme (Auto, Light, Dark); both are kept on the device.
+
+## More options (3-dot menu)
+The last icon under an answer opens: Mnemonic, Analogy, Explain like a kid, Full marks answer, Key points, Common mistakes, Practice MCQ.
+Results come from `POST /api/more` and are saved on the device (`orbit_more_v1`) per answer; they are dropped when the answer is regenerated.

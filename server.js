@@ -62,6 +62,18 @@ const DTYPES = {
   chart: 'Diagram type: CHART. A simple bar chart or graph with axes and labels using the numbers in the answer; if there are no numbers, a simple labelled graph of the idea.',
   table: 'Diagram type: TABLE. A neat table drawn with SVG rectangles and text: a header row and 3 to 5 rows.'
 };
+const SYSTEM_MORE = `You are a friendly Class 10 Science tutor for SEBA/NCERT students.
+You are given a textbook question and its answer. Write the extra help asked for, at Class 10 level, in simple English.
+Rules: plain text only, you may use **bold** for key words; no headings, no tables, no LaTeX; write chemical formulas with Unicode subscripts (H₂O) and use → for arrows; keep the science correct.`;
+const MORE_KINDS = {
+  mnemonic: 'Create one easy mnemonic (a short phrase or rhyme) that helps remember the key points of this answer. Then say in 1 or 2 lines what each part stands for. Maximum 80 words.',
+  analogy: 'Give one simple everyday analogy (from home, school or village life) that explains the main idea of this answer. 3 to 5 short sentences, then one line on where the analogy stops fitting. Maximum 110 words.',
+  kid: 'Explain this answer the way you would to a 10-year-old child: very simple words, short sentences, one small everyday example. Keep the science correct. Maximum 120 words.',
+  full: 'Write this answer the way a SEBA Class 10 exam answer should be written to score full marks: the correct statement or definition first, the balanced equation with state symbols if relevant, key terms in **bold**, and a one-line conclusion. 4 to 6 lines, exam style.',
+  points: 'Give 4 to 6 key points to revise this answer. One point per line starting with "- ". Each point under 15 words.',
+  mistakes: 'List 3 common mistakes students make on this question. For each: the mistake, then the correct version. 1 or 2 lines each.',
+  mcq: 'Make 3 multiple-choice practice questions on the same topic, Class 10 level. Do not repeat the original question. Use exactly this format for each, with a blank line between questions:\nQ1. question\nA) option\nB) option\nC) option\nD) option\nAnswer: X (one-line reason)'
+};
 const MAX_CLIENT_TEXT = 2500;   // saved answers the browser may send back if the server forgot them (free-tier restarts)
 const hash = t => crypto.createHash('sha1').update(String(t)).digest('hex').slice(0, 10);
 const clientText = t => (typeof t === 'string' && t.length > 0 && t.length <= MAX_CLIENT_TEXT) ? t : null;
@@ -180,6 +192,23 @@ app.post('/api/translate', async (req, res) => {
   if (CACHE.has(key)) return res.json({ text: CACHE.get(key), cached: true });
   if (!guardAI(req, res)) return;
   const r = await gemini(SYSTEM_TR, `Translate into ${LANGS[to]}:\n\n${base}`, { temperature: 0.2 });
+  if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
+  CACHE.set(key, r.text);
+  res.json({ text: r.text });
+});
+
+// ---- extra help (3-dot menu) ---------------------------------------------
+app.post('/api/more', async (req, res) => {
+  const q = guard(req, res); if (!q) return;
+  const { id, kind } = req.body;
+  if (!Object.prototype.hasOwnProperty.call(MORE_KINDS, kind)) return res.status(400).json({ error: 'Ye option supported nahi hai.' });
+  const base = clientText(req.body.text) || CACHE.get(id + '|en');
+  if (!base) return res.status(400).json({ error: 'Pehle AI Answer banao, phir ye option use karo.' });
+  const key = id + '|more|' + kind + '|' + hash(base);
+  if (CACHE.has(key)) return res.json({ text: CACHE.get(key), cached: true });
+  if (!guardAI(req, res)) return;
+  const prompt = `${buildPrompt(q)}\n\nHere is the answer:\n${base}\n\nExtra help kind: ${kind}.\n${MORE_KINDS[kind]}`;
+  const r = await gemini(SYSTEM_MORE, prompt, { temperature: 0.5 });
   if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
   CACHE.set(key, r.text);
   res.json({ text: r.text });
