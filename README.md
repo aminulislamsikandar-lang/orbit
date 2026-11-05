@@ -21,3 +21,8 @@ Edit `questions.js` and add a block with a new unique `id`.
 Every answer the AI generates is saved in the browser (`localStorage`, key `orbit_answers_v1`), so it opens later without internet.
 Answers are hidden by default; tapping the question shows or hides them. The questions and the app page are cached too (`public/sw.js`).
 Translations are saved per answer (`orbit_tr_v1`) and are dropped when the answer is regenerated. The diagram of a hearted answer is saved inside the saved entry (`orbit_saved_v1`). The icon under a diagram makes a new one.
+
+## Sidebar and settings
+Menu icon (top-left) opens the sidebar: Home, Favourite (hearted answers), Pinned (pin icon on each question), PYQ, Pass mark, Topper, Faculty, Developer, Settings, Log in.
+PYQ, Pass mark, Topper, Faculty, Developer and Log in show "Coming soon" for now.
+Settings: diagram type (Auto, Flow, Labelled, Comparison, Mind map, Chart, Table) and theme (Auto, Light, Dark); both are kept on the device.

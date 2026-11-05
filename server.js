@@ -53,6 +53,15 @@ const LANGS = {
   as: 'Assamese (Assamese script)',
   bn: 'Bengali (Bengali script)'
 };
+const DTYPES = {
+  auto: '',
+  flow: 'Diagram type: FLOW DIAGRAM. 3 to 5 boxes joined by arrows showing the steps in order.',
+  labelled: 'Diagram type: LABELLED DIAGRAM. A simple picture of the apparatus or particles with label lines naming each part.',
+  compare: 'Diagram type: SIDE-BY-SIDE COMPARISON. Two columns with a heading each and 3 or 4 matching points.',
+  mindmap: 'Diagram type: MIND MAP. The central idea in the middle with 4 to 6 branches.',
+  chart: 'Diagram type: CHART. A simple bar chart or graph with axes and labels using the numbers in the answer; if there are no numbers, a simple labelled graph of the idea.',
+  table: 'Diagram type: TABLE. A neat table drawn with SVG rectangles and text: a header row and 3 to 5 rows.'
+};
 const MAX_CLIENT_TEXT = 2500;   // saved answers the browser may send back if the server forgot them (free-tier restarts)
 const hash = t => crypto.createHash('sha1').update(String(t)).digest('hex').slice(0, 10);
 const clientText = t => (typeof t === 'string' && t.length > 0 && t.length <= MAX_CLIENT_TEXT) ? t : null;
@@ -189,12 +198,13 @@ function cleanSvg(raw) {
 app.post('/api/visual', async (req, res) => {
   const q = guard(req, res); if (!q) return;
   const { id, fresh } = req.body;
+  const dtype = Object.prototype.hasOwnProperty.call(DTYPES, req.body.dtype) ? req.body.dtype : 'auto';
   const base = clientText(req.body.text) || CACHE.get(id + '|en') || '';
-  const key = id + '|vis|' + hash(base);
+  const key = id + '|vis|' + dtype + '|' + hash(base);
   if (fresh) CACHE.delete(key);
   if (CACHE.has(key)) return res.json({ svg: CACHE.get(key), cached: true });
   if (!guardAI(req, res)) return;
-  const prompt = buildPrompt(q) + (base ? `\n\nHere is the answer to illustrate:\n${base}` : '') + '\n\nDraw ONE clear diagram for this.'
+  const prompt = buildPrompt(q) + (base ? `\n\nHere is the answer to illustrate:\n${base}` : '') + '\n\nDraw ONE clear diagram for this.' + (DTYPES[dtype] ? '\n' + DTYPES[dtype] : '')
     + (fresh ? '\nThe student did not like the previous diagram. Use a clearly different layout and style.' : '');
   const r = await gemini(SYSTEM_VIS, prompt, { temperature: 0.4, maxTokens: 4096 });
   if (!r.text) return res.status(502).json({ error: failMsg(r.status) });

@@ -9,7 +9,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Hind:wght@400;500;600&display=swap">
 <style>
 :root{--bg:#f4f2ec;--card:#fff;--tx:#111;--mut:#6b6b6b;--ln:#cfcac0;--ans:#f1f1ee;--on:#111;--onbg:#f4f2ec;--hov:rgba(0,0,0,.07);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root{--bg:#111;--card:#1c1c1c;--tx:#f2f2f2;--mut:#9a9a9a;--ln:#3a3a3a;--ans:#262626;--on:#f2f2f2;--onbg:#111;--hov:rgba(255,255,255,.1)}}
+:root[data-theme="dark"]{--bg:#111;--card:#1c1c1c;--tx:#f2f2f2;--mut:#9a9a9a;--ln:#3a3a3a;--ans:#262626;--on:#f2f2f2;--onbg:#111;--hov:rgba(255,255,255,.1)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#111;--card:#1c1c1c;--tx:#f2f2f2;--mut:#9a9a9a;--ln:#3a3a3a;--ans:#262626;--on:#f2f2f2;--onbg:#111;--hov:rgba(255,255,255,.1)}}
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--tx);font:16px/1.55 Hind,system-ui,sans-serif}
@@ -55,10 +56,35 @@ h2.sec{margin:26px 0 8px;font-size:20px}
 .vis{margin-top:10px;border-radius:12px;overflow:hidden;border:1px solid var(--ln)}
 .vis img{display:block;width:100%;height:auto;background:#fff}
 .err{color:#b3261e;margin-top:10px;font-size:14px}
-@media(prefers-color-scheme:dark){.err{color:#ff8a80}}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]) .err{color:#ff8a80}}
+:root[data-theme="dark"] .err{color:#ff8a80}
+.top{display:flex;align-items:center;gap:4px;margin-left:-8px}
+.q{position:relative}
+.q .qbody{padding-right:34px}
+.ic.pin{position:absolute;top:8px;right:46px;width:32px;height:32px}
+.ic.pin.nochev{right:12px}
+.ic.pin svg{width:18px;height:18px}
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .2s;z-index:20}
+.scrim.open{opacity:1;pointer-events:auto}
+.side{position:fixed;top:0;bottom:0;left:0;width:min(300px,84vw);background:var(--card);z-index:30;transform:translateX(-100%);transition:transform .2s;display:flex;flex-direction:column;padding:calc(10px + env(safe-area-inset-top,0px)) 10px calc(10px + env(safe-area-inset-bottom,0px));box-shadow:1px 0 0 var(--ln);overflow-y:auto}
+.side.open{transform:none}
+.shead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sitem{display:flex;align-items:center;gap:12px;width:100%;padding:10px 12px;border:0;background:transparent;border-radius:10px;text-align:left;color:var(--tx)}
+.sitem svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;color:var(--mut)}
+.sitem:hover{background:var(--hov)}
+.sitem[aria-current=page]{background:var(--hov);font-weight:600}
+.sbadge{margin-left:auto;color:var(--mut);font-size:13px}
+.sgap{flex:1;min-height:12px}
+.sline{border-top:1px solid var(--ln);margin:6px 4px}
+.soon{margin-top:40px;text-align:center;color:var(--mut)}
+.soon svg{width:44px;height:44px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.soon p{margin:10px 0 0;font-size:18px}
+@media(prefers-reduced-motion:reduce){.side,.scrim{transition:none}}
 </style>
 </head>
 <body>
+<div id="scrim" class="scrim"></div>
+<aside id="side" class="side" aria-label="Menu" aria-hidden="true" inert></aside>
 <div id="app"><p class="mut">Loading…</p></div>
 <script>
 const $=s=>document.querySelector(s);
@@ -76,12 +102,23 @@ const I={
  stop:ic('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
  cp:ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>'),
  ok:ic('<path d="M5 13l4 4L19 7"/>'),
- chev:ic('<path d="M6 9l6 6 6-6"/>')
+ chev:ic('<path d="M6 9l6 6 6-6"/>'),
+ menu:ic('<path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>'),
+ close:ic('<path d="M6 6l12 12"/><path d="M18 6L6 18"/>'),
+ home:ic('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
+ pin:ic('<line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24z"/>'),
+ pyq:ic('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h6"/>'),
+ pass:ic('<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>'),
+ topper:ic('<path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3"/><path d="M7 5H4v2a3 3 0 0 0 3 3"/>'),
+ fac:ic('<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.7a3.5 3.5 0 0 1 0 6.6"/><path d="M18 14a6.5 6.5 0 0 1 3.5 6"/>'),
+ dev:ic('<path d="M8 8l-5 4 5 4"/><path d="M16 8l5 4-5 4"/><path d="M14 5l-4 14"/>'),
+ set:ic('<path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h2"/><path d="M10 17h10"/><circle cx="8" cy="17" r="2"/>'),
+ login:ic('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8l4 4-4 4"/><path d="M14 12H3"/>')
 };
 // translation languages: key -> button label, speech voice
 const TRL={hing:{n:'Hinglish',v:'hi-IN'},as:{n:'অসমীয়া',v:'as-IN'},bn:{n:'বাংলা',v:'bn-IN'}};
 
-let DATA=null,SHOW='all';
+let DATA=null,VIEW='home';
 const ANS={};   // id -> {loading,text,err}
 const TR={};    // id|lang -> {loading,text,err}
 const VIS={};   // id -> {loading,svg,err}
@@ -114,6 +151,22 @@ for(const id in TRC){
 // A diagram is kept only for answers the student hearted (it lives inside the saved entry).
 for(const id in SAVED)if(SAVED[id]&&SAVED[id].svg)VIS[id]={svg:SAVED[id].svg};
 const OPEN={};   // id -> answer is visible (hidden by default)
+
+// Pinned questions and settings also live on this device.
+const PKEY='orbit_pins_v1',STKEY='orbit_settings_v1';
+let PINS={},ST={theme:'auto',dtype:'auto'};
+try{PINS=JSON.parse(localStorage.getItem(PKEY)||'{}')||{}}catch(e){PINS={}}
+try{ST={...ST,...(JSON.parse(localStorage.getItem(STKEY)||'{}')||{})}}catch(e){}
+const isPinned=id=>!!PINS[id];
+const nPinned=()=>Object.keys(PINS).length;
+function pinPersist(){try{localStorage.setItem(PKEY,JSON.stringify(PINS))}catch(e){}}
+function stSave(){try{localStorage.setItem(STKEY,JSON.stringify(ST))}catch(e){}}
+function applyTheme(){if(ST.theme==='light'||ST.theme==='dark')document.documentElement.dataset.theme=ST.theme;else delete document.documentElement.dataset.theme}
+applyTheme();
+const DTYPES=[['auto','Auto'],['flow','Flow diagram'],['labelled','Labelled diagram'],['compare','Comparison'],['mindmap','Mind map'],['chart','Chart / graph'],['table','Table']];
+const THEMES=[['auto','Auto'],['light','Light'],['dark','Dark']];
+const SOON={pyq:['PYQ','pyq'],pass:['Pass mark','pass'],topper:['Topper','topper'],faculty:['Faculty','fac'],dev:['Developer','dev'],login:['Log in','login']};
+const TITLES={home:'Home',fav:'Favourite',pins:'Pinned',settings:'Settings'};
 const isSaved=id=>!!SAVED[id];
 const nSaved=()=>Object.keys(SAVED).length;
 const dateFmt=t=>new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
@@ -146,7 +199,7 @@ function toolbar(q){
 
 function qHTML(q){
  const a=ANS[q.id]||{},txt=shown(q.id),has=!!a.text,open=has&&!!OPEN[q.id];
- return `<div class="card q ${has?'can':''}" data-qid="${q.id}"><div class="qb" ${has?`role="button" tabindex="0" aria-expanded="${open}" aria-label="Q${q.no}. Answer ${open?'chhupao':'dikhao'}"`:''}><div class="qbody"><div class="qn">Q${q.no}.</div><p>${esc(q.text)}</p>
+ return `<div class="card q ${has?'can':''}" data-qid="${q.id}"><button class="ic pin ${isPinned(q.id)?'liked':''} ${has?'':'nochev'}" data-act="pin" data-id="${q.id}" aria-pressed="${isPinned(q.id)}" title="${isPinned(q.id)?'Pin hatao':'Pin karo'}" aria-label="${isPinned(q.id)?'Pin hatao':'Pin karo'}">${I.pin}</button><div class="qb" ${has?`role="button" tabindex="0" aria-expanded="${open}" aria-label="Q${q.no}. Answer ${open?'chhupao':'dikhao'}"`:''}><div class="qbody"><div class="qn">Q${q.no}.</div><p>${esc(q.text)}</p>
  ${(q.parts||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
  ${(q.options||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}</div>${has?`<span class="chev ${open?'open':''}">${I.chev}</span>`:''}</div>
  ${has?(open?`<div class="ans">${fmt(txt)}</div>${isSaved(q.id)?`<div class="saved-note">Saved · ${dateFmt(SAVED[q.id].at)}</div>`:''}${toolbar(q)}`
@@ -154,20 +207,60 @@ function qHTML(q){
   :`<button class="btn" data-act="ask" data-id="${q.id}" ${a.loading?'disabled':''}>${a.loading?'Soch raha hoon…':'AI Answer'}</button>`}
  ${a.err?`<div class="err" role="alert">${esc(a.err)}</div>`:''}</div>`}
 
+function listHTML(fn,empty){
+ const secs=DATA.sections.map(x=>({t:x.title,qs:x.questions.filter(fn)})).filter(x=>x.qs.length);
+ return secs.length?secs.map(x=>`<h2 class="sec">${esc(x.t)}</h2>${x.qs.map(qHTML).join('')}`).join(''):`<p class="mut" style="margin-top:24px">${empty}</p>`;
+}
+function settingsHTML(){
+ const chips=(list,cur,act)=>`<div class="chips" role="group">${list.map(([k,n])=>`<button class="chip" data-act="${act}" data-v="${k}" aria-pressed="${cur===k}">${n}</button>`).join('')}</div>`;
+ return `<h1 style="font-size:26px;margin-top:14px">Settings</h1>
+ <h2 class="sec">Diagram type</h2>${chips(DTYPES,ST.dtype,'setd')}
+ <p class="mut" style="margin-top:8px">Naya diagram is type mein banega. Diagram ke neeche wale icon se naya banao.</p>
+ <h2 class="sec">Theme</h2>${chips(THEMES,ST.theme,'sett')}`;
+}
+function soonHTML(){
+ const [t,i]=SOON[VIEW];
+ return `<h1 style="font-size:26px;margin-top:14px">${t}</h1><div class="soon">${I[i]}<p>Coming soon</p></div>`;
+}
 function draw(){
- const d=DATA,y=window.scrollY,n=nSaved();
- const secs=d.sections.map(s=>({t:s.title,qs:SHOW==='saved'?s.questions.filter(q=>isSaved(q.id)):s.questions})).filter(s=>s.qs.length);
- $('#app').innerHTML=`<div class="logo">${LOGO}Orbit Tutorial</div>
- <div class="mut">Class ${d.class} · ${esc(d.subject)}</div>
- <h1 style="font-size:26px;margin-top:14px">Chapter ${d.chapter.no}: ${esc(d.chapter.title)}</h1>
- <div class="chips" role="group" aria-label="Show">
-  <button class="chip" data-show="all" aria-pressed="${SHOW==='all'}">All questions</button>
-  <button class="chip" data-show="saved" aria-pressed="${SHOW==='saved'}">${ic(HEART)}Saved (${n})</button></div>
- ${secs.length?secs.map(s=>`<h2 class="sec">${esc(s.t)}</h2>${s.qs.map(qHTML).join('')}`).join('')
-   :`<p class="mut" style="margin-top:24px">Abhi koi answer save nahi hua. Kisi answer ke neeche heart dabao.</p>`}
- <p class="mut" style="margin-top:28px">AI se kabhi galti ho sakti hai. Exam se pehle apni kitab se check kar lo.</p>`;
+ const d=DATA,y=window.scrollY;
+ let body;
+ if(VIEW==='home'||VIEW==='fav'||VIEW==='pins'){
+  const head=VIEW==='home'?`<h1 style="font-size:26px;margin-top:14px">Chapter ${d.chapter.no}: ${esc(d.chapter.title)}</h1>`
+   :`<h1 style="font-size:26px;margin-top:14px">${TITLES[VIEW]}</h1><div class="mut">Chapter ${d.chapter.no}: ${esc(d.chapter.title)}</div>`;
+  const fn=VIEW==='fav'?q=>isSaved(q.id):VIEW==='pins'?q=>isPinned(q.id):()=>true;
+  const empty=VIEW==='fav'?'Abhi koi answer save nahi hua. Kisi answer ke neeche heart dabao.':'Abhi koi question pin nahi hua. Question ke upar pin icon dabao.';
+  body=head+listHTML(fn,empty)+`<p class="mut" style="margin-top:28px">AI se kabhi galti ho sakti hai. Exam se pehle apni kitab se check kar lo.</p>`;
+ }else if(VIEW==='settings')body=settingsHTML();
+ else body=soonHTML();
+ $('#app').innerHTML=`<div class="top"><button class="ic" data-act="menu" aria-label="Menu kholo" aria-expanded="false">${I.menu}</button><div class="logo">${LOGO}Orbit Tutorial</div></div>
+ <div class="mut">Class ${d.class} · ${esc(d.subject)}</div>${body}`;
+ drawSide();
  window.scrollTo(0,y);
 }
+function drawSide(){
+ const item=(v,ico,label,badge)=>`<button class="sitem" data-act="nav" data-v="${v}" ${VIEW===v?'aria-current="page"':''}>${I[ico]}<span>${label}</span>${badge!=null?`<span class="sbadge">${badge}</span>`:''}</button>`;
+ $('#side').innerHTML=`<div class="shead"><div class="logo" style="font-size:22px">${LOGO}Orbit</div><button class="ic" data-act="close" aria-label="Menu band karo">${I.close}</button></div>
+ ${item('home','home','Home')}${item('fav','heart','Favourite',nSaved())}${item('pins','pin','Pinned',nPinned())}
+ <div class="sline"></div>
+ ${item('pyq','pyq','PYQ')}${item('pass','pass','Pass mark')}${item('topper','topper','Topper')}${item('faculty','fac','Faculty')}${item('dev','dev','Developer')}
+ <div class="sgap"></div><div class="sline"></div>
+ ${item('settings','set','Settings')}${item('login','login','Log in')}`;
+}
+function openSide(on,noFocus){
+ const sd=$('#side'),sc=$('#scrim');
+ sd.classList.toggle('open',on);sc.classList.toggle('open',on);
+ sd.setAttribute('aria-hidden',String(!on));
+ if(on){sd.removeAttribute('inert');const f=sd.querySelector('[data-act=close]');if(f&&!noFocus)f.focus()}
+ else{sd.setAttribute('inert','');const m=document.querySelector('[data-act=menu]');if(m&&!noFocus)m.focus()}
+ const m=document.querySelector('[data-act=menu]');if(m)m.setAttribute('aria-expanded',String(on));
+}
+function go(v){
+ if(window.speechSynthesis&&speechSynthesis.speaking)speechSynthesis.cancel();
+ for(const id in UI)UI[id].say=false;
+ VIEW=v;draw();openSide(false,true);window.scrollTo(0,0);
+}
+function pin(id){if(PINS[id])delete PINS[id];else PINS[id]=Date.now();pinPersist();draw()}
 
 async function api(path,body){
  const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(75000)});
@@ -212,7 +305,7 @@ async function genVis(id,fresh){
  const prev=VIS[id]&&VIS[id].svg;
  VIS[id]={loading:true,svg:fresh?prev:undefined};draw();
  try{
-  const j=await api('/api/visual',{id,text:(ANS[id]||{}).text,fresh:!!fresh});
+  const j=await api('/api/visual',{id,text:(ANS[id]||{}).text,fresh:!!fresh,dtype:ST.dtype});
   VIS[id]={svg:j.svg};
   if(isSaved(id)){SAVED[id].svg=j.svg;persist()}
  }catch(e){VIS[id]={err:errMsg(e),svg:prev}}
@@ -241,14 +334,19 @@ async function copy(id){
 }
 
 document.addEventListener('click',e=>{
- const s=e.target.closest('[data-show]');if(s){SHOW=s.dataset.show;draw();return}
  const b=e.target.closest('[data-act]');
  if(!b){const c=e.target.closest('.q[data-qid]');
   if(c&&!e.target.closest('.ans,.tb,.chips,.vis,.btn,a,button')&&!String(window.getSelection()))toggleOpen(c.dataset.qid);
   return}
  if(b.disabled)return;
  const id=b.dataset.id,act=b.dataset.act;
- if(act==='ask')ask(id,false);
+ if(act==='menu')openSide(true);
+ else if(act==='close')openSide(false);
+ else if(act==='nav')go(b.dataset.v);
+ else if(act==='pin')pin(id);
+ else if(act==='setd'){ST.dtype=b.dataset.v;stSave();draw()}
+ else if(act==='sett'){ST.theme=b.dataset.v;applyTheme();stSave();draw()}
+ else if(act==='ask')ask(id,false);
  else if(act==='re')ask(id,true);
  else if(act==='like')like(id);
  else if(act==='tr'){const u=ui(id);u.menu=!u.menu;draw()}
@@ -259,7 +357,9 @@ document.addEventListener('click',e=>{
  else if(act==='cp')copy(id);
 });
 
+$('#scrim').addEventListener('click',()=>openSide(false));
 document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&$('#side').classList.contains('open')){openSide(false);return}
  if(e.key!=='Enter'&&e.key!==' ')return;
  const b=e.target.closest&&e.target.closest('.qb[role=button]');if(!b)return;
  e.preventDefault();toggleOpen(b.closest('.q').dataset.qid,true);
