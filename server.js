@@ -6,7 +6,13 @@ const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+// Models are tried in this order. Set GEMINI_MODEL in Render to choose the first one.
+const MODELS = [...new Set([
+  process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.8-flash'
+])];
 const KEY = process.env.GEMINI_API_KEY;
 
 // id -> question. The client sends only an id, never free text,
@@ -63,39 +69,60 @@ app.post('/api/answer', async (req, res) => {
   if (limited(req.ip)) return res.status(429).json({ error: 'Thoda ruko, bahut zyada requests. 1 minute baad try karo.' });
 
   const t0 = Date.now();
-  try {
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
-        signal: AbortSignal.timeout(40000),
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: 'user', parts: [{ text: buildPrompt(q, lg) }] }],
-          generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
-        })
+  const prompt = buildPrompt(q, lg);
+  const DEADLINE = t0 + 55000;           // browser gives up at 75s, so stay under that
+  let lastStatus = 0;
+
+  // Try each model in order. If Google says "busy" (503/429/500) or is slow, wait a second and move on.
+  for (const model of MODELS) {
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const left = DEADLINE - Date.now();
+      if (left < 4000) break;
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
+            signal: AbortSignal.timeout(Math.min(20000, left)),
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: SYSTEM }] },
+              contents: [{ role: 'user', parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
+            })
+          }
+        );
+        const j = await r.json().catch(() => ({}));
+        if (r.ok) {
+          const text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
+          if (text) {
+            console.log('Answer ok', id, model, (Date.now() - t0) + 'ms');
+            CACHE.set(key, text);
+            return res.json({ answer: text });
+          }
+          console.error('Gemini empty answer', model);
+          break;                           // try next model
+        }
+        lastStatus = r.status;
+        console.error('Gemini error', r.status, model, JSON.stringify(j).slice(0, 300));
+        if (r.status === 503 || r.status === 429 || r.status === 500) {
+          if (attempt === 1) { await new Promise(ok => setTimeout(ok, 1200)); continue; }
+        }
+        break;                             // 400/403/404 etc: this model won't work, next model
+      } catch (e) {
+        console.error('Gemini request failed', model, (Date.now() - t0) + 'ms', e.name, e.message);
+        lastStatus = 504;
+        break;                             // slow or unreachable: next model
       }
-    );
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      console.error('Gemini error', r.status, JSON.stringify(j).slice(0, 500));
-      const msg = r.status === 429
-        ? 'AI ki free limit abhi poori ho gayi hai. Thodi der baad try karo.'
-        : 'AI se answer nahi mila. Dobara try karo.';
-      return res.status(502).json({ error: msg });
     }
-    const text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-    if (!text) return res.status(502).json({ error: 'AI ne khaali answer diya. Dobara try karo.' });
-    console.log('Answer ok', id, MODEL, (Date.now() - t0) + 'ms');
-    CACHE.set(key, text);
-    res.json({ answer: text });
-  } catch (e) {
-    console.error('Gemini request failed after', (Date.now() - t0) + 'ms', e.name, e.message);
-    if (e.name === 'TimeoutError' || e.name === 'AbortError')
-      return res.status(504).json({ error: 'AI ko jawab dene mein bahut time lag raha hai. Dobara try karo.' });
-    res.status(502).json({ error: 'Server AI tak pahunch nahi paya. Dobara try karo.' });
   }
+
+  const msg = lastStatus === 429
+    ? 'AI ki free limit abhi poori ho gayi hai. Thodi der baad try karo.'
+    : (lastStatus === 503 || lastStatus === 504)
+      ? 'Google ka AI abhi busy hai. 1-2 minute baad dobara try karo.'
+      : 'AI se answer nahi mila. Dobara try karo.';
+  res.status(502).json({ error: msg });
 });
 
 const PORT = process.env.PORT || 3000;
