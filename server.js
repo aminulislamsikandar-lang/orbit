@@ -6,6 +6,7 @@ const app = express();
 app.use(express.json({ limit: '10kb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+const KEY = process.env.GEMINI_API_KEY;
 // Models are tried in this order. Set GEMINI_MODEL in Render to choose the first one.
 const MODELS = [...new Set([
   process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite',
@@ -13,9 +14,8 @@ const MODELS = [...new Set([
   'gemini-3.6-flash',
   'gemini-3.8-flash'
 ])];
-const KEY = process.env.GEMINI_API_KEY;
 
-// id -> question. The client sends only an id, never free text,
+// id -> question. The client only ever sends an id (never free text),
 // so nobody can use this server as a free general-purpose AI with your key.
 const BY_ID = new Map();
 QUIZ.sections.forEach(s => s.questions.forEach(q => BY_ID.set(q.id, q)));
@@ -26,58 +26,65 @@ Rules:
 - For equations: give the BALANCED equation. Add state symbols (s), (l), (g), (aq) when asked or when relevant. Show a short balancing check (atoms on each side).
 - For multiple-choice: state the correct option clearly, then explain why each wrong statement is wrong.
 - For "why" questions: give the reason in 2-4 short sentences.
+- If the question has parts (i), (ii), (a), (b)..., answer each part separately with its label.
 - Write chemical formulas with Unicode subscripts (H₂O, Fe₂O₃, CO₂) and use → for arrows.
 - Use plain text. You may use **bold** for key words. No headings, no tables, no LaTeX.
-- If the question has parts (i), (ii), (a), (b)..., answer each part separately with its label.
 - Keep it concise: about 150 words for a single question, up to 300 words when there are several parts.`;
 
-function buildPrompt(q, lang) {
+const SYSTEM_TR = `You are a careful translator for Class 10 science textbooks.
+Translate the given text into the requested language.
+Keep chemical formulas, equations, numbers, state symbols and **bold** markers exactly as they are.
+Output ONLY the translation, nothing else.`;
+
+const SYSTEM_VIS = `You draw simple educational diagrams as SVG for Class 10 students.
+Output ONLY one <svg> element. No markdown fences, no explanation.
+Requirements:
+- xmlns="http://www.w3.org/2000/svg" and viewBox="0 0 640 360".
+- First draw a white background <rect width="640" height="360" fill="#ffffff"/> so it is readable in dark mode.
+- Dark text (#111), font-family Arial, font-size 15 to 20. Use coloured boxes and arrows (you may use <marker>).
+- English labels, Unicode subscripts (H₂O).
+- For a chemical equation: show reactants → products as boxes with an atom-count check under each side.
+  For a concept or "why" question: a short labelled flow of 3 to 5 steps.
+- No scripts, no images, no external links, no foreignObject. Keep it under 3500 characters.`;
+
+const LANGS = {
+  hing: 'Hinglish (Hindi written in English/Roman letters, simple everyday words; keep science terms in English)',
+  as: 'Assamese (Assamese script)',
+  bn: 'Bengali (Bengali script)'
+};
+const MAX_CLIENT_TEXT = 2500;   // saved answers the browser may send back if the server forgot them (free-tier restarts)
+const clientText = t => (typeof t === 'string' && t.length > 0 && t.length <= MAX_CLIENT_TEXT) ? t : null;
+
+function buildPrompt(q) {
   const parts = [`Question ${q.no}: ${q.text}`];
   (q.parts || []).forEach(p => parts.push(p));
   (q.options || []).forEach(o => parts.push(o));
   if (q.context) parts.push('\n(Textbook context, do not repeat it: ' + q.context + ')');
-  const L = lang === 'hi'
-    ? 'Reply in simple Hinglish (Hindi written in English letters), but keep chemical terms and formulas in English.'
-    : 'Reply in simple English.';
-  return `${L}\n\n${parts.join('\n')}`;
+  return `Reply in simple English.\n\n${parts.join('\n')}`;
 }
 
-// Answer cache: same question+language is only generated once (saves free quota).
-const CACHE = new Map();
-
-// Tiny per-IP rate limit: 15 AI calls per minute.
+// ---- caches + rate limit -------------------------------------------------
+const CACHE = new Map();   // "id|en", "id|hi", "id|tr|hi", "id|vis"
 const HITS = new Map();
 function limited(ip) {
   const now = Date.now();
   const arr = (HITS.get(ip) || []).filter(t => now - t < 60000);
   arr.push(now);
   HITS.set(ip, arr);
-  return arr.length > 15;
+  return arr.length > 20;
 }
 
-app.get('/api/questions', (req, res) => res.json(QUIZ));
-
-app.post('/api/answer', async (req, res) => {
-  const { id, lang, fresh } = req.body || {};
-  const q = BY_ID.get(id);
-  if (!q) return res.status(400).json({ error: 'Unknown question.' });
-  const lg = lang === 'hi' ? 'hi' : 'en';
-  const key = id + '|' + lg;
-
-  if (!fresh && CACHE.has(key)) return res.json({ answer: CACHE.get(key), cached: true });
-  if (!KEY) return res.status(500).json({ error: 'Server mein GEMINI_API_KEY set nahi hai.' });
-  if (limited(req.ip)) return res.status(429).json({ error: 'Thoda ruko, bahut zyada requests. 1 minute baad try karo.' });
-
+// ---- one place that talks to Gemini -------------------------------------
+// Tries each model in order. If Google says "busy" (503/429/500) or is slow,
+// waits a moment and moves on. Stays under 55s so the browser never gives up first.
+async function gemini(system, prompt, opts = {}) {
   const t0 = Date.now();
-  const prompt = buildPrompt(q, lg);
-  const DEADLINE = t0 + 55000;           // browser gives up at 75s, so stay under that
+  const DEADLINE = t0 + 55000;
   let lastStatus = 0;
-
-  // Try each model in order. If Google says "busy" (503/429/500) or is slow, wait a second and move on.
   for (const model of MODELS) {
     for (let attempt = 1; attempt <= 2; attempt++) {
       const left = DEADLINE - Date.now();
-      if (left < 4000) break;
+      if (left < 4000) return { status: lastStatus };
       try {
         const r = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -86,43 +93,110 @@ app.post('/api/answer', async (req, res) => {
             headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
             signal: AbortSignal.timeout(Math.min(20000, left)),
             body: JSON.stringify({
-              systemInstruction: { parts: [{ text: SYSTEM }] },
+              systemInstruction: { parts: [{ text: system }] },
               contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 4096 }
+              generationConfig: { temperature: opts.temperature ?? 0.3, maxOutputTokens: opts.maxTokens || 4096 }
             })
           }
         );
         const j = await r.json().catch(() => ({}));
         if (r.ok) {
           const text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
-          if (text) {
-            console.log('Answer ok', id, model, (Date.now() - t0) + 'ms');
-            CACHE.set(key, text);
-            return res.json({ answer: text });
-          }
+          if (text) { console.log('Gemini ok', model, (Date.now() - t0) + 'ms'); return { text }; }
           console.error('Gemini empty answer', model);
-          break;                           // try next model
+          break;
         }
         lastStatus = r.status;
         console.error('Gemini error', r.status, model, JSON.stringify(j).slice(0, 300));
-        if (r.status === 503 || r.status === 429 || r.status === 500) {
-          if (attempt === 1) { await new Promise(ok => setTimeout(ok, 1200)); continue; }
+        if ((r.status === 503 || r.status === 429 || r.status === 500) && attempt === 1) {
+          await new Promise(ok => setTimeout(ok, 1200));
+          continue;
         }
-        break;                             // 400/403/404 etc: this model won't work, next model
+        break;
       } catch (e) {
         console.error('Gemini request failed', model, (Date.now() - t0) + 'ms', e.name, e.message);
         lastStatus = 504;
-        break;                             // slow or unreachable: next model
+        break;
       }
     }
   }
+  return { status: lastStatus };
+}
 
-  const msg = lastStatus === 429
-    ? 'AI ki free limit abhi poori ho gayi hai. Thodi der baad try karo.'
-    : (lastStatus === 503 || lastStatus === 504)
-      ? 'Google ka AI abhi busy hai. 1-2 minute baad dobara try karo.'
-      : 'AI se answer nahi mila. Dobara try karo.';
-  res.status(502).json({ error: msg });
+function failMsg(status) {
+  if (status === 429) return 'AI ki free limit abhi poori ho gayi hai. Thodi der baad try karo.';
+  if (status === 503 || status === 504) return 'Google ka AI abhi busy hai. 1-2 minute baad dobara try karo.';
+  return 'AI se answer nahi mila. Dobara try karo.';
+}
+
+// Common checks for every AI route. Returns the question, or null after replying.
+function guard(req, res) {
+  const q = BY_ID.get((req.body || {}).id);
+  if (!q) { res.status(400).json({ error: 'Unknown question.' }); return null; }
+  return q;
+}
+function guardAI(req, res) {
+  if (!KEY) { res.status(500).json({ error: 'Server mein GEMINI_API_KEY set nahi hai.' }); return false; }
+  if (limited(req.ip)) { res.status(429).json({ error: 'Thoda ruko, bahut zyada requests. 1 minute baad try karo.' }); return false; }
+  return true;
+}
+
+app.get('/api/questions', (req, res) => res.json(QUIZ));
+
+// ---- answer ---------------------------------------------------------------
+app.post('/api/answer', async (req, res) => {
+  const q = guard(req, res); if (!q) return;
+  const { id, fresh } = req.body;
+  const key = id + '|en';
+  if (fresh) for (const k of [...CACHE.keys()]) if (k.startsWith(id + '|')) CACHE.delete(k); // old translations/diagram are stale too
+  if (!fresh && CACHE.has(key)) return res.json({ answer: CACHE.get(key), cached: true });
+  if (!guardAI(req, res)) return;
+  const r = await gemini(SYSTEM, buildPrompt(q));
+  if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
+  CACHE.set(key, r.text);
+  res.json({ answer: r.text });
+});
+
+// ---- translate (Hindi / Assamese) ----------------------------------------
+app.post('/api/translate', async (req, res) => {
+  const q = guard(req, res); if (!q) return;
+  const { id, to } = req.body;
+  if (!LANGS[to]) return res.status(400).json({ error: 'Language supported nahi hai.' });
+  const key = id + '|tr|' + to;
+  if (CACHE.has(key)) return res.json({ text: CACHE.get(key), cached: true });
+  const base = CACHE.get(id + '|en') || clientText(req.body.text);
+  if (!base) return res.status(400).json({ error: 'Pehle AI Answer banao, phir translate karo.' });
+  if (!guardAI(req, res)) return;
+  const r = await gemini(SYSTEM_TR, `Translate into ${LANGS[to]}:\n\n${base}`, { temperature: 0.2 });
+  if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
+  CACHE.set(key, r.text);
+  res.json({ text: r.text });
+});
+
+// ---- diagram (SVG) --------------------------------------------------------
+function cleanSvg(raw) {
+  const m = String(raw || '').match(/<svg[\s\S]*<\/svg>/i);
+  if (!m) return null;
+  let svg = m[0];
+  if (svg.length > 20000) return null;
+  if (/<script|<foreignObject|<iframe|<image|\son[a-z]+\s*=|javascript:/i.test(svg)) return null;
+  if (!/xmlns\s*=/.test(svg.slice(0, 200))) svg = svg.replace(/<svg/i, '<svg xmlns="http://www.w3.org/2000/svg"');
+  return svg;
+}
+app.post('/api/visual', async (req, res) => {
+  const q = guard(req, res); if (!q) return;
+  const { id } = req.body;
+  const key = id + '|vis';
+  if (CACHE.has(key)) return res.json({ svg: CACHE.get(key), cached: true });
+  if (!guardAI(req, res)) return;
+  const base = CACHE.get(id + '|en') || clientText(req.body.text) || '';
+  const prompt = buildPrompt(q) + (base ? `\n\nHere is the answer to illustrate:\n${base}` : '') + '\n\nDraw ONE clear diagram for this.';
+  const r = await gemini(SYSTEM_VIS, prompt, { temperature: 0.4, maxTokens: 4096 });
+  if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
+  const svg = cleanSvg(r.text);
+  if (!svg) return res.status(502).json({ error: 'Diagram sahi nahi bana. Dobara try karo.' });
+  CACHE.set(key, svg);
+  res.json({ svg });
 });
 
 const PORT = process.env.PORT || 3000;

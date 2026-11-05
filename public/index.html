@@ -8,29 +8,45 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700&family=Hind:wght@400;500;600&display=swap">
 <style>
-:root{--btx:#fff;--bg:#f4f2ec;--card:#fff;--tx:#111;--mut:#555;--ln:#cfcac0;--c:#111;--ans:#eef6ee;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media(prefers-color-scheme:dark){:root{--btx:#111;--bg:#111;--card:#1c1c1c;--tx:#f2f2f2;--mut:#aaa;--ln:#3a3a3a;--c:#f2f2f2;--ans:#1b2a1d}}
+:root{--bg:#f4f2ec;--card:#fff;--tx:#111;--mut:#6b6b6b;--ln:#cfcac0;--ans:#f1f1ee;--on:#111;--onbg:#f4f2ec;--hov:rgba(0,0,0,.07);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root{--bg:#111;--card:#1c1c1c;--tx:#f2f2f2;--mut:#9a9a9a;--ln:#3a3a3a;--ans:#262626;--on:#f2f2f2;--onbg:#111;--hov:rgba(255,255,255,.1)}}
 *,*::before,*::after{box-sizing:border-box}
 html,body{margin:0}
 body{background:var(--bg);color:var(--tx);font:16px/1.55 Hind,system-ui,sans-serif}
 h1,h2,h3{font-family:'Baloo 2',system-ui,sans-serif;margin:0;line-height:1.2}
 #app{max-width:640px;margin:0 auto;padding:16px 16px 48px}
 button{font:inherit;color:inherit;cursor:pointer}
-:focus-visible{outline:3px solid var(--c);outline-offset:2px}
+:focus-visible{outline:2px solid var(--tx);outline-offset:2px}
 .logo{font-family:'Baloo 2',system-ui,sans-serif;font-size:28px;display:flex;align-items:center;gap:8px}
 .mut{color:var(--mut);font-size:14px}
-.chips{display:flex;gap:8px;margin:10px 0 4px}
-.chip{border:2px solid var(--ln);background:var(--card);border-radius:99px;padding:5px 14px}
-.chip[aria-pressed=true]{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+.chips{display:flex;gap:8px;margin:10px 0 4px;flex-wrap:wrap}
+.chip{border:1px solid var(--ln);background:var(--card);border-radius:99px;padding:5px 14px;display:inline-flex;align-items:center;gap:6px}
+.chip svg{width:16px;height:16px}
+.chip[aria-pressed=true]{background:var(--on);color:var(--onbg);border-color:var(--on)}
 h2.sec{margin:26px 0 8px;font-size:20px}
 .card{background:var(--card);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 1px 0 var(--ln)}
 .qn{font-weight:700;margin-bottom:4px}
 .q p{margin:4px 0}
 .q .pt{margin:3px 0 3px 12px}
-.btn{background:var(--tx);color:var(--bg);border:0;border-radius:12px;padding:10px 16px;font-weight:600;margin-top:12px}
+.btn{background:var(--on);color:var(--onbg);border:0;border-radius:12px;padding:10px 16px;font-weight:600;margin-top:12px}
 .btn:disabled{opacity:.5;cursor:wait}
-.ghost{background:transparent;border:2px solid var(--ln);border-radius:12px;padding:6px 12px;margin-top:10px;font-size:14px}
-.ans{background:var(--ans);border-radius:14px;padding:12px 14px;margin-top:12px;white-space:normal;overflow-wrap:anywhere}
+.ans{background:var(--ans);border-radius:14px;padding:12px 14px;margin-top:12px;overflow-wrap:anywhere}
+.saved-note{font-size:13px;color:var(--mut);margin-top:6px}
+
+/* ChatGPT / Claude style: borderless grey line icons */
+.tb{display:flex;gap:2px;margin-top:6px;flex-wrap:wrap}
+.ic{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border:0;background:transparent;border-radius:10px;color:var(--mut);text-decoration:none;padding:0;transition:background .12s,color .12s}
+.ic:hover{background:var(--hov);color:var(--tx)}
+.ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
+.ic[aria-pressed=true]{background:var(--hov);color:var(--tx)}
+.ic.liked svg{fill:currentColor}
+.ic:disabled{opacity:.4;cursor:not-allowed}
+.ic:disabled:hover{background:transparent;color:var(--mut)}
+.spin svg{animation:sp 1s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spin svg{animation:none}}
+.vis{margin-top:10px;border-radius:12px;overflow:hidden;border:1px solid var(--ln)}
+.vis img{display:block;width:100%;height:auto;background:#fff}
 .err{color:#b3261e;margin-top:10px;font-size:14px}
 @media(prefers-color-scheme:dark){.err{color:#ff8a80}}
 </style>
@@ -41,45 +57,159 @@ h2.sec{margin:26px 0 8px;font-size:20px}
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const LOGO='<svg viewBox="0 0 48 48" style="width:1.1em;height:1.1em;flex:none" role="img" aria-label="Orbit logo"><ellipse cx="24" cy="24" rx="20" ry="9" fill="none" stroke="currentColor" stroke-width="2.5" transform="rotate(-25 24 24)"/><circle cx="24" cy="24" r="8" fill="currentColor"/><circle cx="42.1" cy="15.5" r="3.5" fill="currentColor"/></svg>';
-let DATA=null,LANG='en';const ANS={};   // ANS[id+'|'+lang] = {text|err|loading}
+const ic=p=>`<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+const HEART='<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>';
+const I={
+ heart:ic(HEART),
+ re:ic('<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/>'),
+ tr:ic('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.5 3.5 5.5 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-5.5-3.5-9s1-6.5 3.5-9z"/>'),
+ vis:ic('<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>'),
+ vid:ic('<rect x="3" y="5" width="18" height="14" rx="3"/><path d="M10 9l5 3-5 3z"/>'),
+ say:ic('<path d="M11 5L6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/>'),
+ stop:ic('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
+ cp:ic('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a1 1 0 0 1 1-1h9"/>'),
+ ok:ic('<path d="M5 13l4 4L19 7"/>')
+};
+// translation languages: key -> button label, speech voice
+const TRL={hing:{n:'Hinglish',v:'hi-IN'},as:{n:'অসমীয়া',v:'as-IN'},bn:{n:'বাংলা',v:'bn-IN'}};
+
+let DATA=null,SHOW='all';
+const ANS={};   // id -> {loading,text,err}
+const TR={};    // id|lang -> {loading,text,err}
+const VIS={};   // id -> {loading,svg,err}
+const UI={};    // id -> {menu,tr,vis,say,copied,msg}
+const ui=id=>UI[id]||(UI[id]={});
+
+// Saved (liked) answers live in this browser, so the student can see later which answers they picked.
+const SKEY='orbit_saved_v1';
+let SAVED={};
+try{SAVED=JSON.parse(localStorage.getItem(SKEY)||'{}')||{}}catch(e){SAVED={}}
+function persist(){try{localStorage.setItem(SKEY,JSON.stringify(SAVED))}catch(e){}}
+for(const id in SAVED)ANS[id]={text:SAVED[id].text};
+const isSaved=id=>!!SAVED[id];
+const nSaved=()=>Object.keys(SAVED).length;
+const dateFmt=t=>new Date(t).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
 
 const fmt=t=>esc(t).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>').replace(/\n/g,'<br>');
+const plain=t=>String(t||'').replace(/\*\*/g,'');
+function shown(id){const u=ui(id);if(u.tr){const t=TR[id+'|'+u.tr];if(t&&t.text)return t.text}return(ANS[id]||{}).text||''}
+function ytLink(q){const s=`Class 10 Science ${DATA.chapter.title} ${q.video||q.text}`.slice(0,110);return 'https://www.youtube.com/results?search_query='+encodeURIComponent(s)}
+
+function toolbar(q){
+ const id=q.id,u=ui(id),a=ANS[id]||{},tr=u.tr?TR[id+'|'+u.tr]:null,v=VIS[id]||{},sv=isSaved(id);
+ return `<div class="tb" role="toolbar" aria-label="Answer tools">
+  <button class="ic ${sv?'liked':''}" data-act="like" data-id="${id}" title="${sv?'Saved hai (hatane ke liye dabao)':'Is answer ko save karo'}" aria-label="${sv?'Saved answer, hatane ke liye dabao':'Answer save karo'}" aria-pressed="${sv}">${I.heart}</button>
+  <button class="ic" data-act="cp" data-id="${id}" title="Copy" aria-label="Answer copy karo">${u.copied?I.ok:I.cp}</button>
+  <button class="ic ${tr&&tr.loading?'spin':''}" data-act="tr" data-id="${id}" title="Translate" aria-label="Translate" aria-pressed="${!!(u.menu||u.tr)}">${I.tr}</button>
+  <button class="ic ${v.loading?'spin':''}" data-act="vis" data-id="${id}" title="Diagram" aria-label="Diagram dikhao" aria-pressed="${!!u.vis}">${I.vis}</button>
+  <a class="ic" href="${esc(ytLink(q))}" target="_blank" rel="noopener noreferrer" title="Video lecture (YouTube par khulega)" aria-label="Video lecture, YouTube par khulega">${I.vid}</a>
+  <button class="ic" data-act="say" data-id="${id}" title="${u.say?'Rok do':'Sunao'}" aria-label="${u.say?'Rok do':'Answer sunao'}" aria-pressed="${!!u.say}">${u.say?I.stop:I.say}</button>
+  <button class="ic ${a.loading?'spin':''}" data-act="re" data-id="${id}" ${sv?'disabled':''} title="${sv?'Naya answer banane ke liye pehle heart hata do':'Dobara banao (naya answer)'}" aria-label="${sv?'Dobara banao, saved answer ki wajah se band':'Dobara banao'}">${I.re}</button>
+ </div>
+ ${u.menu?`<div class="chips" role="group" aria-label="Translate language">
+   <button class="chip" data-act="trset" data-id="${id}" data-to="" aria-pressed="${!u.tr}">English</button>
+   ${Object.keys(TRL).map(k=>`<button class="chip" data-act="trset" data-id="${id}" data-to="${k}" aria-pressed="${u.tr===k}">${TRL[k].n}</button>`).join('')}</div>`:''}
+ ${tr&&tr.loading?`<div class="mut" style="margin-top:8px">Anuvaad ho raha hai…</div>`:''}
+ ${tr&&tr.err?`<div class="err" role="alert">${esc(tr.err)}</div>`:''}
+ ${u.vis?`<div class="vis">${v.loading?'<p class="mut" style="padding:14px;margin:0">Diagram ban raha hai…</p>':v.svg?`<img alt="Diagram" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(v.svg)}">`:''}</div>`:''}
+ ${u.vis&&v.err?`<div class="err" role="alert">${esc(v.err)}</div>`:''}
+ ${u.msg?`<div class="mut" style="margin-top:8px" role="status">${esc(u.msg)}</div>`:''}`}
 
 function qHTML(q){
- const k=q.id+'|'+LANG,a=ANS[k]||{};
+ const a=ANS[q.id]||{},txt=shown(q.id);
  return `<div class="card q"><div class="qn">Q${q.no}.</div><p>${esc(q.text)}</p>
  ${(q.parts||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
  ${(q.options||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
- ${a.text?`<div class="ans">${fmt(a.text)}</div><button class="ghost" data-re="${q.id}">Dobara banao</button>`
-  :`<button class="btn" data-q="${q.id}" ${a.loading?'disabled':''}>${a.loading?'Soch raha hoon…':'AI Answer'}</button>`}
+ ${a.text?`<div class="ans">${fmt(txt)}</div>${isSaved(q.id)?`<div class="saved-note">Saved · ${dateFmt(SAVED[q.id].at)}</div>`:''}${toolbar(q)}`
+  :`<button class="btn" data-act="ask" data-id="${q.id}" ${a.loading?'disabled':''}>${a.loading?'Soch raha hoon…':'AI Answer'}</button>`}
  ${a.err?`<div class="err" role="alert">${esc(a.err)}</div>`:''}</div>`}
 
 function draw(){
- const d=DATA;
+ const d=DATA,y=window.scrollY,n=nSaved();
+ const secs=d.sections.map(s=>({t:s.title,qs:SHOW==='saved'?s.questions.filter(q=>isSaved(q.id)):s.questions})).filter(s=>s.qs.length);
  $('#app').innerHTML=`<div class="logo">${LOGO}Orbit Tutorial</div>
  <div class="mut">Class ${d.class} · ${esc(d.subject)}</div>
  <h1 style="font-size:26px;margin-top:14px">Chapter ${d.chapter.no}: ${esc(d.chapter.title)}</h1>
- <div class="chips" role="group" aria-label="Answer language">
-  <button class="chip" data-l="en" aria-pressed="${LANG==='en'}">English</button>
-  <button class="chip" data-l="hi" aria-pressed="${LANG==='hi'}">Hinglish</button></div>
- ${d.sections.map(s=>`<h2 class="sec">${esc(s.title)}</h2>${s.questions.map(qHTML).join('')}`).join('')}
+ <div class="chips" role="group" aria-label="Show">
+  <button class="chip" data-show="all" aria-pressed="${SHOW==='all'}">All questions</button>
+  <button class="chip" data-show="saved" aria-pressed="${SHOW==='saved'}">${ic(HEART)}Saved (${n})</button></div>
+ ${secs.length?secs.map(s=>`<h2 class="sec">${esc(s.t)}</h2>${s.qs.map(qHTML).join('')}`).join('')
+   :`<p class="mut" style="margin-top:24px">Abhi koi answer save nahi hua. Kisi answer ke neeche heart dabao.</p>`}
  <p class="mut" style="margin-top:28px">AI se kabhi galti ho sakti hai. Exam se pehle apni kitab se check kar lo.</p>`;
- document.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{LANG=b.dataset.l;draw()});
- document.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>ask(b.dataset.q,false));
- document.querySelectorAll('[data-re]').forEach(b=>b.onclick=()=>ask(b.dataset.re,true));
+ window.scrollTo(0,y);
 }
 
+async function api(path,body){
+ const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(75000)});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(j.error||'Kuch gadbad hui. Dobara try karo.');
+ return j}
+const errMsg=e=>(e.name==='TimeoutError'||e.name==='AbortError')?'Server ne jawab nahi diya. Thodi der baad dobara try karo.':e.message;
+
 async function ask(id,fresh){
- const lang=LANG,k=id+'|'+lang,prev=ANS[k]&&ANS[k].text;
- ANS[k]={loading:true,text:fresh?null:undefined};draw();
- try{
-  const r=await fetch('/api/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,lang,fresh}),signal:AbortSignal.timeout(75000)});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(j.error||'Answer nahi aaya. Dobara try karo.');
-  ANS[k]={text:j.answer};
- }catch(e){ANS[k]={err:(e.name==='TimeoutError'||e.name==='AbortError')?'Server ne jawab nahi diya. Thodi der baad dobara try karo.':e.message,text:prev}}
+ const prev=ANS[id]&&ANS[id].text;
+ ANS[id]={loading:true,text:fresh?prev:undefined};
+ if(fresh){const u=ui(id);u.tr=null;u.menu=false;u.vis=false;u.msg='';delete VIS[id];for(const t in TR)if(t.startsWith(id+'|'))delete TR[t]}
+ draw();
+ try{const j=await api('/api/answer',{id,fresh:!!fresh});ANS[id]={text:j.answer}}
+ catch(e){ANS[id]={err:errMsg(e),text:prev}}
  draw();
 }
+function like(id){
+ const u=ui(id);u.msg='';
+ if(isSaved(id))delete SAVED[id];
+ else if(ANS[id]&&ANS[id].text)SAVED[id]={text:ANS[id].text,at:Date.now()};
+ persist();draw();
+}
+async function setTr(id,to){
+ const u=ui(id);u.msg='';u.tr=to||null;
+ const k=id+'|'+to;
+ if(to&&!(TR[k]&&TR[k].text)){
+  TR[k]={loading:true};draw();
+  try{const j=await api('/api/translate',{id,to,text:(ANS[id]||{}).text});TR[k]={text:j.text}}
+  catch(e){TR[k]={err:errMsg(e)};u.tr=null}
+ }
+ draw();
+}
+async function toggleVis(id){
+ const u=ui(id);u.msg='';u.vis=!u.vis;
+ if(u.vis&&!(VIS[id]&&VIS[id].svg)&&!(VIS[id]&&VIS[id].loading)){
+  VIS[id]={loading:true};draw();
+  try{const j=await api('/api/visual',{id,text:(ANS[id]||{}).text});VIS[id]={svg:j.svg}}
+  catch(e){VIS[id]={err:errMsg(e)}}
+ }
+ draw();
+}
+function say(id){
+ const u=ui(id);u.msg='';
+ if(!('speechSynthesis' in window)){u.msg='Is browser mein sunne ki suvidha nahi hai.';draw();return}
+ if(u.say||speechSynthesis.speaking){speechSynthesis.cancel();u.say=false;draw();return}
+ const t=plain(shown(id));if(!t)return;
+ const ut=new SpeechSynthesisUtterance(t);
+ ut.lang=u.tr?TRL[u.tr].v:'en-IN';
+ ut.onend=ut.onerror=()=>{u.say=false;draw()};
+ u.say=true;speechSynthesis.speak(ut);draw();
+}
+async function copy(id){
+ const u=ui(id);
+ try{await navigator.clipboard.writeText(plain(shown(id)));u.copied=true;u.msg=''}
+ catch(e){u.msg='Copy nahi ho paya. Text ko select karke copy karo.'}
+ draw();setTimeout(()=>{u.copied=false;draw()},1500);
+}
+
+document.addEventListener('click',e=>{
+ const s=e.target.closest('[data-show]');if(s){SHOW=s.dataset.show;draw();return}
+ const b=e.target.closest('[data-act]');if(!b||b.disabled)return;
+ const id=b.dataset.id,act=b.dataset.act;
+ if(act==='ask')ask(id,false);
+ else if(act==='re')ask(id,true);
+ else if(act==='like')like(id);
+ else if(act==='tr'){const u=ui(id);u.menu=!u.menu;draw()}
+ else if(act==='trset')setTr(id,b.dataset.to);
+ else if(act==='vis')toggleVis(id);
+ else if(act==='say')say(id);
+ else if(act==='cp')copy(id);
+});
 
 fetch('/api/questions').then(r=>r.json()).then(d=>{DATA=d;draw()})
  .catch(()=>{$('#app').innerHTML='<p class="err">Questions load nahi hue. Page refresh karo.</p>'});
