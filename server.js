@@ -62,12 +62,14 @@ app.post('/api/answer', async (req, res) => {
   if (!KEY) return res.status(500).json({ error: 'Server mein GEMINI_API_KEY set nahi hai.' });
   if (limited(req.ip)) return res.status(429).json({ error: 'Thoda ruko, bahut zyada requests. 1 minute baad try karo.' });
 
+  const t0 = Date.now();
   try {
     const r = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': KEY },
+        signal: AbortSignal.timeout(40000),
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: buildPrompt(q, lg) }] }],
@@ -85,10 +87,13 @@ app.post('/api/answer', async (req, res) => {
     }
     const text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join('').trim();
     if (!text) return res.status(502).json({ error: 'AI ne khaali answer diya. Dobara try karo.' });
+    console.log('Answer ok', id, MODEL, (Date.now() - t0) + 'ms');
     CACHE.set(key, text);
     res.json({ answer: text });
   } catch (e) {
-    console.error(e);
+    console.error('Gemini request failed after', (Date.now() - t0) + 'ms', e.name, e.message);
+    if (e.name === 'TimeoutError' || e.name === 'AbortError')
+      return res.status(504).json({ error: 'AI ko jawab dene mein bahut time lag raha hai. Dobara try karo.' });
     res.status(502).json({ error: 'Server AI tak pahunch nahi paya. Dobara try karo.' });
   }
 });

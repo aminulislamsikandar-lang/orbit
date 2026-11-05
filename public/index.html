@@ -73,11 +73,11 @@ async function ask(id,fresh){
  const lang=LANG,k=id+'|'+lang,prev=ANS[k]&&ANS[k].text;
  ANS[k]={loading:true,text:fresh?null:undefined};draw();
  try{
-  const r=await fetch('/api/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,lang,fresh})});
+  const r=await fetch('/api/answer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,lang,fresh}),signal:AbortSignal.timeout(60000)});
   const j=await r.json().catch(()=>({}));
   if(!r.ok)throw new Error(j.error||'Answer nahi aaya. Dobara try karo.');
   ANS[k]={text:j.answer};
- }catch(e){ANS[k]={err:e.message,text:prev}}
+ }catch(e){ANS[k]={err:(e.name==='TimeoutError'||e.name==='AbortError')?'Server ne jawab nahi diya. Thodi der baad dobara try karo.':e.message,text:prev}}
  draw();
 }
 
