@@ -20,3 +20,4 @@ Edit `questions.js` and add a block with a new unique `id`.
 ## Offline answers
 Every answer the AI generates is saved in the browser (`localStorage`, key `orbit_answers_v1`), so it opens later without internet.
 Answers are hidden by default; tapping the question shows or hides them. The questions and the app page are cached too (`public/sw.js`).
+Translations are saved per answer (`orbit_tr_v1`) and are dropped when the answer is regenerated. The diagram of a hearted answer is saved inside the saved entry (`orbit_saved_v1`). The icon under a diagram makes a new one.

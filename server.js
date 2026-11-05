@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const QUIZ = require('./questions');
 
 const app = express();
@@ -53,6 +54,7 @@ const LANGS = {
   bn: 'Bengali (Bengali script)'
 };
 const MAX_CLIENT_TEXT = 2500;   // saved answers the browser may send back if the server forgot them (free-tier restarts)
+const hash = t => crypto.createHash('sha1').update(String(t)).digest('hex').slice(0, 10);
 const clientText = t => (typeof t === 'string' && t.length > 0 && t.length <= MAX_CLIENT_TEXT) ? t : null;
 
 function buildPrompt(q) {
@@ -162,10 +164,11 @@ app.post('/api/translate', async (req, res) => {
   const q = guard(req, res); if (!q) return;
   const { id, to } = req.body;
   if (!LANGS[to]) return res.status(400).json({ error: 'Language supported nahi hai.' });
-  const key = id + '|tr|' + to;
-  if (CACHE.has(key)) return res.json({ text: CACHE.get(key), cached: true });
-  const base = CACHE.get(id + '|en') || clientText(req.body.text);
+  // Translate exactly the answer the student sees (the browser sends it); fall back to the server's copy.
+  const base = clientText(req.body.text) || CACHE.get(id + '|en');
   if (!base) return res.status(400).json({ error: 'Pehle AI Answer banao, phir translate karo.' });
+  const key = id + '|tr|' + to + '|' + hash(base);
+  if (CACHE.has(key)) return res.json({ text: CACHE.get(key), cached: true });
   if (!guardAI(req, res)) return;
   const r = await gemini(SYSTEM_TR, `Translate into ${LANGS[to]}:\n\n${base}`, { temperature: 0.2 });
   if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
@@ -185,12 +188,14 @@ function cleanSvg(raw) {
 }
 app.post('/api/visual', async (req, res) => {
   const q = guard(req, res); if (!q) return;
-  const { id } = req.body;
-  const key = id + '|vis';
+  const { id, fresh } = req.body;
+  const base = clientText(req.body.text) || CACHE.get(id + '|en') || '';
+  const key = id + '|vis|' + hash(base);
+  if (fresh) CACHE.delete(key);
   if (CACHE.has(key)) return res.json({ svg: CACHE.get(key), cached: true });
   if (!guardAI(req, res)) return;
-  const base = CACHE.get(id + '|en') || clientText(req.body.text) || '';
-  const prompt = buildPrompt(q) + (base ? `\n\nHere is the answer to illustrate:\n${base}` : '') + '\n\nDraw ONE clear diagram for this.';
+  const prompt = buildPrompt(q) + (base ? `\n\nHere is the answer to illustrate:\n${base}` : '') + '\n\nDraw ONE clear diagram for this.'
+    + (fresh ? '\nThe student did not like the previous diagram. Use a clearly different layout and style.' : '');
   const r = await gemini(SYSTEM_VIS, prompt, { temperature: 0.4, maxTokens: 4096 });
   if (!r.text) return res.status(502).json({ error: failMsg(r.status) });
   const svg = cleanSvg(r.text);

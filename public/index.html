@@ -101,6 +101,18 @@ try{CACHE=JSON.parse(localStorage.getItem(CKEY)||'{}')||{}}catch(e){CACHE={}}
 function cachePersist(){try{localStorage.setItem(CKEY,JSON.stringify(CACHE))}catch(e){}}
 for(const id in SAVED)if(!CACHE[id])CACHE[id]={text:SAVED[id].text,at:SAVED[id].at};
 for(const id in CACHE)if(CACHE[id]&&CACHE[id].text)ANS[id]={text:CACHE[id].text};
+// Translations are kept per answer: a translation is valid only for the answer version (CACHE[id].at) it was made from.
+const TKEY='orbit_tr_v1';
+let TRC={};
+try{TRC=JSON.parse(localStorage.getItem(TKEY)||'{}')||{}}catch(e){TRC={}}
+function trPersist(){try{localStorage.setItem(TKEY,JSON.stringify(TRC))}catch(e){}}
+for(const id in TRC){
+ const base=(CACHE[id]||{}).at;
+ for(const l in TRC[id]){const t=TRC[id][l];if(t&&t.text&&t.base===base&&TRL[l])TR[id+'|'+l]={text:t.text};else delete TRC[id][l]}
+ if(!Object.keys(TRC[id]).length)delete TRC[id];
+}
+// A diagram is kept only for answers the student hearted (it lives inside the saved entry).
+for(const id in SAVED)if(SAVED[id]&&SAVED[id].svg)VIS[id]={svg:SAVED[id].svg};
 const OPEN={};   // id -> answer is visible (hidden by default)
 const isSaved=id=>!!SAVED[id];
 const nSaved=()=>Object.keys(SAVED).length;
@@ -127,7 +139,8 @@ function toolbar(q){
    ${Object.keys(TRL).map(k=>`<button class="chip" data-act="trset" data-id="${id}" data-to="${k}" aria-pressed="${u.tr===k}">${TRL[k].n}</button>`).join('')}</div>`:''}
  ${tr&&tr.loading?`<div class="mut" style="margin-top:8px">Anuvaad ho raha hai…</div>`:''}
  ${tr&&tr.err?`<div class="err" role="alert">${esc(tr.err)}</div>`:''}
- ${u.vis?`<div class="vis">${v.loading?'<p class="mut" style="padding:14px;margin:0">Diagram ban raha hai…</p>':v.svg?`<img alt="Diagram" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(v.svg)}">`:''}</div>`:''}
+ ${u.vis?`<div class="vis">${v.svg?`<img alt="Diagram" style="${v.loading?'opacity:.45':''}" src="data:image/svg+xml;charset=utf-8,${encodeURIComponent(v.svg)}">`:v.loading?'<p class="mut" style="padding:14px;margin:0">Diagram ban raha hai…</p>':''}</div>
+  <div class="tb"><button class="ic ${v.loading?'spin':''}" data-act="visre" data-id="${id}" ${v.loading?'disabled':''} title="Naya diagram banao" aria-label="Naya diagram banao">${I.re}</button></div>`:''}
  ${u.vis&&v.err?`<div class="err" role="alert">${esc(v.err)}</div>`:''}
  ${u.msg?`<div class="mut" style="margin-top:8px" role="status">${esc(u.msg)}</div>`:''}`}
 
@@ -137,7 +150,7 @@ function qHTML(q){
  ${(q.parts||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}
  ${(q.options||[]).map(p=>`<p class="pt">${esc(p)}</p>`).join('')}</div>${has?`<span class="chev ${open?'open':''}">${I.chev}</span>`:''}</div>
  ${has?(open?`<div class="ans">${fmt(txt)}</div>${isSaved(q.id)?`<div class="saved-note">Saved · ${dateFmt(SAVED[q.id].at)}</div>`:''}${toolbar(q)}`
-  :`<div class="saved-note">Answer device mein saved hai. Dekhne ke liye question par tap karo.</div>`)
+  :'')
   :`<button class="btn" data-act="ask" data-id="${q.id}" ${a.loading?'disabled':''}>${a.loading?'Soch raha hoon…':'AI Answer'}</button>`}
  ${a.err?`<div class="err" role="alert">${esc(a.err)}</div>`:''}</div>`}
 
@@ -168,7 +181,7 @@ async function ask(id,fresh){
  ANS[id]={loading:true,text:fresh?prev:undefined};
  if(fresh){const u=ui(id);u.tr=null;u.menu=false;u.vis=false;u.msg='';delete VIS[id];for(const t in TR)if(t.startsWith(id+'|'))delete TR[t]}
  draw();
- try{const j=await api('/api/answer',{id,fresh:!!fresh});ANS[id]={text:j.answer};CACHE[id]={text:j.answer,at:Date.now()};cachePersist();OPEN[id]=true}
+ try{const j=await api('/api/answer',{id,fresh:!!fresh});ANS[id]={text:j.answer};CACHE[id]={text:j.answer,at:Date.now()};cachePersist();delete TRC[id];trPersist();OPEN[id]=true}
  catch(e){ANS[id]={err:errMsg(e),text:prev}}
  draw();
 }
@@ -182,7 +195,7 @@ function toggleOpen(id,kb){
 function like(id){
  const u=ui(id);u.msg='';
  if(isSaved(id))delete SAVED[id];
- else if(ANS[id]&&ANS[id].text)SAVED[id]={text:ANS[id].text,at:Date.now()};
+ else if(ANS[id]&&ANS[id].text)SAVED[id]={text:ANS[id].text,at:Date.now(),...(VIS[id]&&VIS[id].svg?{svg:VIS[id].svg}:{})};
  persist();draw();
 }
 async function setTr(id,to){
@@ -190,19 +203,25 @@ async function setTr(id,to){
  const k=id+'|'+to;
  if(to&&!(TR[k]&&TR[k].text)){
   TR[k]={loading:true};draw();
-  try{const j=await api('/api/translate',{id,to,text:(ANS[id]||{}).text});TR[k]={text:j.text}}
+  try{const j=await api('/api/translate',{id,to,text:(ANS[id]||{}).text});TR[k]={text:j.text};(TRC[id]=TRC[id]||{})[to]={text:j.text,base:(CACHE[id]||{}).at};trPersist()}
   catch(e){TR[k]={err:errMsg(e)};u.tr=null}
  }
  draw();
 }
-async function toggleVis(id){
- const u=ui(id);u.msg='';u.vis=!u.vis;
- if(u.vis&&!(VIS[id]&&VIS[id].svg)&&!(VIS[id]&&VIS[id].loading)){
-  VIS[id]={loading:true};draw();
-  try{const j=await api('/api/visual',{id,text:(ANS[id]||{}).text});VIS[id]={svg:j.svg}}
-  catch(e){VIS[id]={err:errMsg(e)}}
- }
+async function genVis(id,fresh){
+ const prev=VIS[id]&&VIS[id].svg;
+ VIS[id]={loading:true,svg:fresh?prev:undefined};draw();
+ try{
+  const j=await api('/api/visual',{id,text:(ANS[id]||{}).text,fresh:!!fresh});
+  VIS[id]={svg:j.svg};
+  if(isSaved(id)){SAVED[id].svg=j.svg;persist()}
+ }catch(e){VIS[id]={err:errMsg(e),svg:prev}}
  draw();
+}
+function toggleVis(id){
+ const u=ui(id);u.msg='';u.vis=!u.vis;
+ if(u.vis&&!(VIS[id]&&VIS[id].svg)&&!(VIS[id]&&VIS[id].loading))genVis(id,false);
+ else draw();
 }
 function say(id){
  const u=ui(id);u.msg='';
@@ -235,6 +254,7 @@ document.addEventListener('click',e=>{
  else if(act==='tr'){const u=ui(id);u.menu=!u.menu;draw()}
  else if(act==='trset')setTr(id,b.dataset.to);
  else if(act==='vis')toggleVis(id);
+ else if(act==='visre')genVis(id,true);
  else if(act==='say')say(id);
  else if(act==='cp')copy(id);
 });
